@@ -147,9 +147,9 @@ void updateLedAnim() {
       break;
     case LETTER_RED_UP: {
       int realIndex = ledMap[idx];
-      leds[realIndex] = CRGB(ledAnim.v, 0, 0);
+      leds[realIndex] = CRGB(ledAnim.v, ledAnim.v, ledAnim.v); // 渐变为白色
       FastLED.show();
-      if (now - ledAnim.lastTime >= 40) {
+      if (now - ledAnim.lastTime >= 15) {
         ledAnim.v += 5;
         ledAnim.lastTime = now;
         if (ledAnim.v >= 255) {
@@ -163,7 +163,7 @@ void updateLedAnim() {
     }
     case LETTER_WHITE_FLASH: {
       int realIndex = ledMap[idx];
-      if (now - ledAnim.lastTime >= 150) {
+      if (now - ledAnim.lastTime >= 100) { // 保持亮起时间 50ms
         leds[realIndex] = CRGB::Black;
         FastLED.show();
         ledAnim.state = LETTER_OFF;
@@ -173,7 +173,7 @@ void updateLedAnim() {
     }
     case LETTER_OFF: {
       int realIndex = ledMap[idx];
-      if (now - ledAnim.lastTime >= 120) {
+      if (now - ledAnim.lastTime >= 200) { // 字母间隔时间 200ms
         leds[realIndex] = CRGB::Black;
         FastLED.show();
         ledAnim.pos++;
@@ -210,13 +210,15 @@ void updateLedAnim() {
     case FLASH_ALL_OFF:
       for (int i = 0; i < NUM_LEDS; i++) leds[i] = CRGB::Black;
       FastLED.show();
-      ledAnim.flashCount++;
-      if (ledAnim.flashCount < 2) {
-        ledAnim.state = FLASH_ALL_ON;
-        ledAnim.lastTime = now;
-      } else {
-        ledAnim.state = END;
-        ledAnim.lastTime = now;
+      if (now - ledAnim.lastTime >= 300) { // 闪烁间隔 300ms
+        ledAnim.flashCount++;
+        if (ledAnim.flashCount < 4) { // 总共闪烁两次（亮灭为一次，2*2=4）
+          ledAnim.state = FLASH_ALL_ON;
+          ledAnim.lastTime = now;
+        } else {
+          ledAnim.state = END;
+          ledAnim.lastTime = now;
+        }
       }
       break;
     case END:
@@ -305,7 +307,7 @@ void setup() {
       is_setup_mode = false;     // ⭐ 必须，加上后才能进入主页
       server.begin();
       Serial.println("HTTP服务器已启动（STA模式）");
-      FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
+      FastLED.addLeds<WS2811, DATA_PIN, GRB>(leds, NUM_LEDS);
       FastLED.setBrightness(BRIGHTNESS);
       FastLED.clear();
       FastLED.show();

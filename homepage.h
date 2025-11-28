@@ -296,7 +296,7 @@ const char* homepage_html = R"=====(
             bulb.classList.remove('active');
             
             // 字母间隔时间
-            await delay(300);
+            await delay(400);
         }
 
         // 发送消息
