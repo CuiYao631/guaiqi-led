@@ -148,6 +148,31 @@ const char* homepage_html = R"=====(
             display: flex;
             gap: 10px;
             z-index: 10;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        select {
+            padding: 10px 15px;
+            font-size: 1.2rem;
+            background: #333;
+            border: 1px solid #555;
+            color: #d12e2e;
+            font-family: 'Courier New', monospace;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #d12e2e;
+        }
+
+        select option {
+            background: #333;
+            color: #d12e2e;
         }
 
         input {
@@ -185,6 +210,36 @@ const char* homepage_html = R"=====(
         button:disabled {
             background: #555;
             cursor: not-allowed;
+        }
+
+        /* 灯光效果按钮样式 */
+        .fx-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .fx-btn {
+            padding: 8px 16px;
+            font-size: 1rem;
+            background: #444;
+            color: #fff;
+            border: 1px solid #666;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Courier New', monospace;
+        }
+
+        .fx-btn:hover {
+            background: #555;
+            border-color: #d12e2e;
+        }
+
+        .fx-btn.active {
+            background: #d12e2e;
+            border-color: #d12e2e;
+            box-shadow: 0 0 10px rgba(209, 46, 46, 0.5);
         }
 
         /* 标题样式 */
@@ -229,9 +284,53 @@ const char* homepage_html = R"=====(
 
     <!-- 控制区域 -->
     <div class="controls">
-        <input type="text" id="messageInput" placeholder="RUN..." maxlength="50" autocomplete="off">
-        <button onclick="transmitMessage()" id="sendBtn">Send Message</button>
+        <select id="modeSelect" onchange="switchMode()">
+            <option value="command">命令模式</option>
+            <option value="light">灯光模式</option>
+        </select>
+        <span id="lightControls" style="display:none;">
+            <div class="fx-buttons">
+                <button class="fx-btn" onclick="setLightFx('rainbow')">彩虹</button>
+                <button class="fx-btn" onclick="setLightFx('twinkle')">星光闪烁</button>
+                <button class="fx-btn" onclick="setLightFx('colorwaves')">色浪</button>
+                <button class="fx-btn" onclick="setLightFx('rainbowbeat')">彩虹节奏</button>
+                <button class="fx-btn" onclick="setLightFx('theaterChase')">戏院跑马灯</button>
+            </div>
+        </span>
+        <span id="cmdControls">
+            <input type="text" id="messageInput" placeholder="RUN..." maxlength="50" autocomplete="off">
+            <button onclick="transmitMessage()" id="sendBtn">Send Message</button>
+        </span>
     </div>
+    <script>
+        function switchMode() {
+            const mode = document.getElementById('modeSelect').value;
+            document.getElementById('lightControls').style.display = (mode === 'light') ? '' : 'none';
+            document.getElementById('cmdControls').style.display = (mode === 'command') ? '' : 'none';
+            
+            // 切换到命令模式时关闭所有灯光
+            if (mode === 'command') {
+                fetch('/setfx', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'fx=none'
+                });
+            }
+        }
+        function setLightFx(fx) {
+            // 移除所有按钮的激活状态
+            document.querySelectorAll('.fx-btn').forEach(btn => btn.classList.remove('active'));
+            
+            // 激活当前按钮
+            event.target.classList.add('active');
+            
+            fetch('/setfx', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'fx=' + encodeURIComponent(fx)
+            });
+        }
+    </script>
 
     <script>
         // 配置
@@ -305,6 +404,12 @@ const char* homepage_html = R"=====(
             const text = input.value.toUpperCase().replace(/[^A-Z]/g, ''); // 只保留字母
             if (!text) return;
 
+            // 先闪烁两次
+            await flashAllBulbsTwice();
+            
+            // 等待500ms
+            await delay(500);
+
             // 发送到后端，后端会调用playMessage
             fetch('/message', {
                 method: 'POST',
@@ -315,14 +420,60 @@ const char* homepage_html = R"=====(
             isTransmitting = true;
             btn.disabled = true;
             input.disabled = true;
-            await delay(500);
+            
             for (let char of text) {
                 await lightUpLetter(char);
             }
+            
+            // 播放完成后闪烁四次
+            await flashAllBulbsFourTimes();
+            
             isTransmitting = false;
             btn.disabled = false;
             input.disabled = false;
             input.focus();
+        }
+
+        // 闪烁所有灯泡两次
+        async function flashAllBulbsTwice() {
+            for (let i = 0; i < 2; i++) {
+                // 所有灯泡亮起
+                alphabet.split('').forEach(char => {
+                    const bulb = document.getElementById(`bulb-${char}`);
+                    if (bulb) bulb.classList.add('active');
+                });
+                
+                await delay(150);
+                
+                // 所有灯泡熄灭
+                alphabet.split('').forEach(char => {
+                    const bulb = document.getElementById(`bulb-${char}`);
+                    if (bulb) bulb.classList.remove('active');
+                });
+                
+                await delay(150);
+            }
+        }
+
+        // 播放完成后闪烁所有灯泡四次
+        async function flashAllBulbsFourTimes() {
+            for (let i = 0; i < 4; i++) {
+                // 所有灯泡亮起
+                alphabet.split('').forEach(char => {
+                    const bulb = document.getElementById(`bulb-${char}`);
+                    if (bulb) bulb.classList.add('active');
+                });
+                
+                await delay(180);
+                
+                // 所有灯泡熄灭
+                alphabet.split('').forEach(char => {
+                    const bulb = document.getElementById(`bulb-${char}`);
+                    if (bulb) bulb.classList.remove('active');
+                });
+                
+                await delay(300);
+            }
         }
 
         // 监听回车键

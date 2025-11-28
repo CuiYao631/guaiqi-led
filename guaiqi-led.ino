@@ -8,7 +8,8 @@ std::deque<String> msgQueue;
 #include "homepage.h"
 #include <FastLED.h>
 
-#define NUM_LEDS 26         // 灯珠数量
+#define NUM_LEDS 26         // 字母灯珠数量
+#define TOTAL_LEDS 50       // 总灯珠数量（灯光模式）
 #define DATA_PIN 12         // 数据引脚
 #define BRIGHTNESS 200      // 亮度设置 (0-255)
 #define EEPROM_SIZE 512     // EEPROM 大小
@@ -28,13 +29,17 @@ IPAddress subnet(255, 255, 255, 0);
 WebServer server(80);
 
 
-CRGB leds[NUM_LEDS];
+CRGB leds[TOTAL_LEDS];
 
 const long wifi_timeout = 20000;
 
 bool is_setup_mode = false;
 String saved_ssid = "";
 String saved_password = "";
+
+// 灯光模式相关全局变量
+enum LightFxMode { FX_NONE, FX_RAINBOW, FX_TWINKLE, FX_COLORWAVES, FX_RAINBOWBEAT, FX_THEATERCHASE };
+volatile LightFxMode currentFx = FX_NONE;
 
 // ------------------------- 函数声明 --------------------------------
 void setupAPMode();
@@ -43,6 +48,12 @@ void handleSave();
 void handleScan();
 void handleReset();
 void handleNotFound();
+void setMapped(int idx, const CRGB& color);
+void fx_rainbow();
+void fx_twinkle();
+void fx_colorwaves();
+void fx_rainbowbeat();
+void fx_theaterChase();
 // ------------------------------------------------------------------
 
 // ------------------------------------------------------------------
@@ -74,6 +85,9 @@ int letterToIndex(char c) {
 // ----------------------------
 enum LedAnimState {
   IDLE,
+  PRE_FLASH_ALL_ON,
+  PRE_FLASH_ALL_OFF,
+  PRE_WAIT,
   LETTER_RED_UP,
   LETTER_WHITE_FLASH,
   LETTER_OFF,
@@ -111,7 +125,7 @@ void startNextMessage() {
   ledAnim.pos = 0;
   ledAnim.v = 0;
   ledAnim.flashCount = 0;
-  ledAnim.state = NEXT_LETTER;
+  ledAnim.state = PRE_FLASH_ALL_ON; // 先闪烁两次
   ledAnim.lastTime = millis();
   ledAnim.errorChar = false;
 }
@@ -126,6 +140,42 @@ void updateLedAnim() {
   if (ledAnim.pos < ledAnim.msg.length())
     idx = letterToIndex(ledAnim.msg[ledAnim.pos]);
   switch (ledAnim.state) {
+    case PRE_FLASH_ALL_ON:
+      for (int i = 0; i < NUM_LEDS; i++) {
+        int realIndex = ledMap[i];
+        leds[realIndex] = CRGB::White;
+      }
+      FastLED.show();
+      if (now - ledAnim.lastTime >= 150) {
+        ledAnim.state = PRE_FLASH_ALL_OFF;
+        ledAnim.lastTime = now;
+      }
+      break;
+    case PRE_FLASH_ALL_OFF:
+      for (int i = 0; i < NUM_LEDS; i++) {
+        int realIndex = ledMap[i];
+        leds[realIndex] = CRGB::Black;
+      }
+      FastLED.show();
+      if (now - ledAnim.lastTime >= 150) {
+        ledAnim.flashCount++;
+        if (ledAnim.flashCount < 2) { // 闪烁两次
+          ledAnim.state = PRE_FLASH_ALL_ON;
+          ledAnim.lastTime = now;
+        } else {
+          ledAnim.flashCount = 0;
+          ledAnim.state = PRE_WAIT; // 先等待一段时间
+          ledAnim.lastTime = now;
+        }
+      }
+      break;
+    case PRE_WAIT:
+      // 闪烁完成后等待500ms再开始播放
+      if (now - ledAnim.lastTime >= 500) {
+        ledAnim.state = NEXT_LETTER;
+        ledAnim.lastTime = now;
+      }
+      break;
     case NEXT_LETTER:
       if (ledAnim.pos >= ledAnim.msg.length()) {
         ledAnim.flashCount = 0;
@@ -212,7 +262,7 @@ void updateLedAnim() {
       FastLED.show();
       if (now - ledAnim.lastTime >= 300) { // 闪烁间隔 300ms
         ledAnim.flashCount++;
-        if (ledAnim.flashCount < 4) { // 总共闪烁两次（亮灭为一次，2*2=4）
+        if (ledAnim.flashCount < 8) { // 总共闪烁四次（亮灭为一次，4*2=8）
           ledAnim.state = FLASH_ALL_ON;
           ledAnim.lastTime = now;
         } else {
@@ -271,6 +321,22 @@ void setup() {
     server.send(200, "application/json", out);
   });
 
+  server.on("/setfx", HTTP_POST, []() {
+    String fx = server.arg("fx");
+    if (fx == "rainbow") currentFx = FX_RAINBOW;
+    else if (fx == "twinkle") currentFx = FX_TWINKLE;
+    else if (fx == "colorwaves") currentFx = FX_COLORWAVES;
+    else if (fx == "rainbowbeat") currentFx = FX_RAINBOWBEAT;
+    else if (fx == "theaterChase") currentFx = FX_THEATERCHASE;
+    else {
+      currentFx = FX_NONE;
+      // 切换到命令模式时关闭所有灯光
+      FastLED.clear();
+      FastLED.show();
+    }
+    server.send(200, "text/plain", "OK");
+  });
+
   bool is_configured = EEPROM.read(CONFIG_FLAG_ADDR) == 1;
 
   if (is_configured) {
@@ -307,7 +373,7 @@ void setup() {
       is_setup_mode = false;     // ⭐ 必须，加上后才能进入主页
       server.begin();
       Serial.println("HTTP服务器已启动（STA模式）");
-      FastLED.addLeds<WS2811, DATA_PIN, GRB>(leds, NUM_LEDS);
+      FastLED.addLeds<WS2811, DATA_PIN, GRB>(leds, TOTAL_LEDS);
       FastLED.setBrightness(BRIGHTNESS);
       FastLED.clear();
       FastLED.show();
@@ -328,6 +394,17 @@ void loop() {
 
   // server 在 AP 或 STA 模式都需要处理请求
   server.handleClient();
+
+  // 灯光模式优先
+  switch (currentFx) {
+    case FX_RAINBOW: fx_rainbow(); return;
+    case FX_TWINKLE: fx_twinkle(); return;
+    case FX_COLORWAVES: fx_colorwaves(); return;
+    case FX_RAINBOWBEAT: fx_rainbowbeat(); return;
+    case FX_THEATERCHASE: fx_theaterChase(); return;
+    default: break;
+  }
+
   updateLedAnim();
 
   // 硬件按钮进入配置模式
@@ -437,4 +514,65 @@ void handleReset() {
 
 void handleNotFound() {
   server.send(404, "text/plain", "404: 未找到页面");
+}
+
+// ------------------- 灯光效果函数 -------------------
+void setMapped(int idx, const CRGB& color) {
+  leds[ledMap[idx]] = color;
+}
+
+// 0 彩虹 Rainbow
+void fx_rainbow() {
+  static uint8_t hue = 0;
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    leds[i] = CHSV(hue + i * 10, 255, 255);
+  }
+  hue++;
+  FastLED.show();
+  delay(20);
+}
+
+// 1 Twinkle 星光闪烁
+void fx_twinkle() {
+  fadeToBlackBy(leds, TOTAL_LEDS, 40);
+  int p = random(TOTAL_LEDS);
+  leds[p] = CHSV(random8(), 0, 255);
+  FastLED.show();
+  delay(50);
+}
+
+// 2 Color Waves 色浪
+void fx_colorwaves() {
+  static uint8_t s = 0;
+  s++;
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    uint8_t hue = sin8(i * 20 + s * 4);
+    leds[i] = CHSV(hue, 255, 255);
+  }
+  FastLED.show();
+  delay(20);
+}
+
+// 3 Rainbow Beat 彩虹节奏
+void fx_rainbowbeat() {
+  uint8_t beat = beatsin8(3, 0, 255);
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    leds[i] = CHSV(beat + i * 7, 255, 255);
+  }
+  FastLED.show();
+  delay(30);
+}
+
+// 4 Theater Chase 戏院跑马灯
+void fx_theaterChase() {
+  static uint8_t offset = 0;
+  offset = (offset + 1) % 3;
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    if ((i + offset) % 3 == 0)
+      leds[i] = CRGB::White;
+    else
+      leds[i] = CRGB::Black;
+  }
+  FastLED.show();
+  delay(80);
 }
