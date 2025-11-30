@@ -63,9 +63,40 @@ void fx_theaterChase();
 // ...
 // Z(25) → LED0
 // ------------------------------------------------------------------
+// int ledMap[26] = {
+//   25,24,23,22,21,20,19,18,17,16,15,14,13,
+//   12,11,10,9,8,7,6,5,4,3,2,1,0
+// };
+
 int ledMap[26] = {
-  25,24,23,22,21,20,19,18,17,16,15,14,13,
-  12,11,10,9,8,7,6,5,4,3,2,1,0
+  0,//A
+  1,//B
+  2,//C
+  3,//D
+  4,//E
+  5,//F
+  6,//G
+  7,//H
+
+  19,//I
+  18,//J
+  17,//K
+  16,//L
+  15,//M
+  14,//N
+  13,//O
+  12,//P
+  11,//Q
+
+  23,//R
+  24,//S
+  25,//T
+  26,//U
+  27,//V
+  28,//W
+  29,//X
+  30,//Y
+  31//Z
 };
 
 // ----------------------------
@@ -110,7 +141,7 @@ struct LedAnim {
 };
 
 LedAnim ledAnim = {"", 0, 0, 0, IDLE, 0, false};
-
+        
 void playMessage(String msg) {
   msgQueue.push_back(msg);
 }
@@ -141,9 +172,8 @@ void updateLedAnim() {
     idx = letterToIndex(ledAnim.msg[ledAnim.pos]);
   switch (ledAnim.state) {
     case PRE_FLASH_ALL_ON:
-      for (int i = 0; i < NUM_LEDS; i++) {
-        int realIndex = ledMap[i];
-        leds[realIndex] = CRGB::White;
+      for (int i = 0; i < TOTAL_LEDS; i++) {
+        leds[i] = CRGB::White;
       }
       FastLED.show();
       if (now - ledAnim.lastTime >= 150) {
@@ -152,9 +182,8 @@ void updateLedAnim() {
       }
       break;
     case PRE_FLASH_ALL_OFF:
-      for (int i = 0; i < NUM_LEDS; i++) {
-        int realIndex = ledMap[i];
-        leds[realIndex] = CRGB::Black;
+      for (int i = 0; i < TOTAL_LEDS; i++) {
+        leds[i] = CRGB::Black;
       }
       FastLED.show();
       if (now - ledAnim.lastTime >= 150) {
@@ -250,7 +279,7 @@ void updateLedAnim() {
       }
       break;
     case FLASH_ALL_ON:
-      for (int i = 0; i < NUM_LEDS; i++) leds[i] = CRGB::White;
+      for (int i = 0; i < TOTAL_LEDS; i++) leds[i] = CRGB::White;
       FastLED.show();
       if (now - ledAnim.lastTime >= 180) {
         ledAnim.state = FLASH_ALL_OFF;
@@ -258,7 +287,7 @@ void updateLedAnim() {
       }
       break;
     case FLASH_ALL_OFF:
-      for (int i = 0; i < NUM_LEDS; i++) leds[i] = CRGB::Black;
+      for (int i = 0; i < TOTAL_LEDS; i++) leds[i] = CRGB::Black;
       FastLED.show();
       if (now - ledAnim.lastTime >= 300) { // 闪烁间隔 300ms
         ledAnim.flashCount++;
